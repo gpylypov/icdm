@@ -31,8 +31,10 @@ class MemoryGymWrapper():
         else:
             self._default_reset_params = reset_params
 
-        render_mode = None if not realtime_mode else "debug_rgb_array"
+        render_mode = None if not realtime_mode else "rgb_array" #CHANGED FROM debug_rgb_array
+        print("Render mode: ", render_mode)
         self._env = gym.make(env_name, disable_env_checker = True, render_mode = render_mode)
+        print("env's render mode: ", self._env.render_mode)
 
         self._realtime_mode = realtime_mode
 
@@ -80,7 +82,7 @@ class MemoryGymWrapper():
         vis_obs, _ = self._env.reset(seed=self._seed, options=options)
         vis_obs = np.swapaxes(vis_obs, 0, 2)
         vis_obs = np.swapaxes(vis_obs, 2, 1)
-
+        # print(self._env.render())
         return vis_obs
 
     def step(self, action):
@@ -106,7 +108,7 @@ class MemoryGymWrapper():
     
     def render(self):
         """Renders the environment."""
-        self._env.render()
+        return self._env.render()
 
     def close(self):
         """Shuts down the environment."""

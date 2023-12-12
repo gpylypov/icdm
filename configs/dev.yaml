@@ -1,9 +1,9 @@
 environment:
-    type: "Minigrid"
-    name: "MiniGrid-MemoryS9-v0"
+    type: "Deviategrid"
+    size: 5
 gamma: 0.99
 lamda: 0.95
-updates: 200
+updates: 50
 epochs: 4
 n_workers: 16
 worker_steps: 256

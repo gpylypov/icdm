@@ -28,6 +28,8 @@ def main():
     else:
         device = torch.device("cpu")
         torch.set_default_tensor_type("torch.FloatTensor")
+    
+    print("Device used: ", device)
 
     # Initialize the PPO trainer and commence training
     trainer = PPOTrainer(config, run_id=run_id, device=device)

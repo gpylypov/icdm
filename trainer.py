@@ -11,6 +11,7 @@ from utils import create_env
 from utils import polynomial_decay
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
+import wandb
 
 class PPOTrainer:
     def __init__(self, config:dict, run_id:str="run", device:torch.device=torch.device("cpu")) -> None:
@@ -25,16 +26,25 @@ class PPOTrainer:
         self.config = config
         self.recurrence = config["recurrence"]
         self.device = device
-        self.run_id = run_id
+        self.run_id = config["environment"]["type"]+"-"+run_id
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
 
-        # Setup Tensorboard Summary Writer
-        if not os.path.exists("./summaries"):
-            os.makedirs("./summaries")
-        timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
-        self.writer = SummaryWriter("./summaries/" + run_id + timestamp)
+
+        run = wandb.init(
+            # Set the project where this run will be logged
+            project="my-awesome-project",
+            # Track hyperparameters and run metadata
+            config=self.config,
+            mode="offline"
+        )
+
+        # # Setup Tensorboard Summary Writer
+        # if not os.path.exists("./summaries"):
+        #     os.makedirs("./summaries")
+        # timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
+        # self.writer = SummaryWriter("./summaries/" + run_id + timestamp)
 
         # Init dummy environment and retrieve action and observation spaces
         print("Step 1: Init dummy environment")
@@ -283,17 +293,26 @@ class PPOTrainer:
             training_stats {list} -- Statistics of the training algorithm
             episode_result {dict} -- Statistics of completed episodes
         """
-        if episode_result:
-            for key in episode_result:
-                if "std" not in key:
-                    self.writer.add_scalar("episode/" + key, episode_result[key], update)
-        self.writer.add_scalar("losses/loss", training_stats[2], update)
-        self.writer.add_scalar("losses/policy_loss", training_stats[0], update)
-        self.writer.add_scalar("losses/value_loss", training_stats[1], update)
-        self.writer.add_scalar("losses/entropy", training_stats[3], update)
-        self.writer.add_scalar("training/sequence_length", self.buffer.true_sequence_length, update)
-        self.writer.add_scalar("training/value_mean", torch.mean(self.buffer.values), update)
-        self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
+        # if episode_result:
+        #     for key in episode_result:
+        #         if "std" not in key:
+        #             self.writer.add_scalar("episode/" + key, episode_result[key], update)
+        # self.writer.add_scalar("losses/loss", training_stats[2], update)
+        # self.writer.add_scalar("losses/policy_loss", training_stats[0], update)
+        # self.writer.add_scalar("losses/value_loss", training_stats[1], update)
+        # self.writer.add_scalar("losses/entropy", training_stats[3], update)
+        # self.writer.add_scalar("training/sequence_length", self.buffer.true_sequence_length, update)
+        # self.writer.add_scalar("training/value_mean", torch.mean(self.buffer.values), update)
+        # self.writer.add_scalar("training/advantage_mean", torch.mean(self.buffer.advantages), update)
+        wandb.log({
+            "losses/loss": training_stats[2],
+            "losses/policy_loss": training_stats[0],
+            "losses/value_loss": training_stats[1],
+            "losses/entropy": training_stats[3],
+            "training/sequence_length": self.buffer.true_sequence_length,
+            "training/value_mean": torch.mean(self.buffer.values),
+            "training/advantage_mean": torch.mean(self.buffer.advantages)
+        })
 
     @staticmethod
     def _process_episode_info(episode_info:list) -> dict:
@@ -331,10 +350,10 @@ class PPOTrainer:
         except:
             pass
 
-        try:
-            self.writer.close()
-        except:
-            pass
+        # try:
+        #     self.writer.close()
+        # except:
+        #     pass
 
         try:
             for worker in self.workers:
