@@ -93,6 +93,7 @@ class ForeverEmptyEnv(MiniGridEnv):
             # Set this to True for maximum speed
             see_through_walls=True,
             max_steps=max_steps,
+            agent_view_size=size,
             render_mode=render_mode,
             **kwargs,
         )

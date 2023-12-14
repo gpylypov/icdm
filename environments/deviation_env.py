@@ -51,7 +51,7 @@ class Deviategrid:
         obs, reward, done, truncated, info = self._env.step(action[0])
         self.history[self.time] = action
         if self.time % 2 == 0 and self.history[self.time/2] == action:
-            reward += -0.1
+            reward += -0.0
         self._rewards.append(reward)
         obs = obs.astype(np.float32) / 255.
         if done or truncated:
