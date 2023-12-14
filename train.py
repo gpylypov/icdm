@@ -1,6 +1,7 @@
 import torch
 from docopt import docopt
 from trainer import PPOTrainer
+from store_memory_trainer import PPOTrainerStoringMemory
 from yaml_parser import YamlParser
 
 def main():
@@ -31,8 +32,17 @@ def main():
     
     print("Device used: ", device)
 
+    trainers={
+        "train-ppo": PPOTrainer, #trains with PPO 
+        "train-ppo-with-memory": PPOTrainerStoringMemory # additionally creates 
+    }
     # Initialize the PPO trainer and commence training
-    trainer = PPOTrainer(config, run_id=run_id, device=device)
+    print(config)
+    if("training_method" in config):
+        trainer = trainers[config["training_method"]](config, run_id=run_id, device=device)
+    else:
+        trainer = PPOTrainer(config, run_id=run_id, device=device)
+
     trainer.run_training()
     trainer.close()
 

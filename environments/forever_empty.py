@@ -5,7 +5,7 @@ from gymnasium import spaces
 from minigrid.core.grid import Grid
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import Goal
-from environments.general import MiniGridEnv
+from minigrid.minigrid_env import MiniGridEnv
 import numpy as np
 
 
@@ -95,8 +95,68 @@ class ForeverEmptyEnv(MiniGridEnv):
             max_steps=max_steps,
             agent_view_size=size,
             render_mode=render_mode,
+            highlight=False,
             **kwargs,
         )
+        
+    def _reward(self):
+        #return 1    
+        return 1 - 0.9 * (self.step_count / self.max_steps)
+
+
+    def step(
+        self, action: ActType
+    ):
+        self.step_count += 1
+
+        reward = 0
+        terminated = False
+        truncated = False
+
+        # Get the position in front of the agent
+        fwd_pos = self.front_pos
+
+        # Get the contents of the cell in front of the agent
+        fwd_cell = self.grid.get(*fwd_pos)
+
+        # Rotate left
+        if action == self.actions.left:
+            self.agent_dir -= 1
+            if self.agent_dir < 0:
+                self.agent_dir += 4
+
+        # Rotate right
+        elif action == self.actions.right:
+            self.agent_dir = (self.agent_dir + 1) % 4
+
+        # Move forward
+        elif action == self.actions.forward:
+            if fwd_cell is None or fwd_cell.can_overlap():
+                self.agent_pos = tuple(fwd_pos)
+            if fwd_cell is not None and fwd_cell.type == "goal":
+                # terminated = True
+                reward = self._reward()
+                self.grid.set(fwd_pos[0], fwd_pos[1], None)
+                self.put_obj(Goal(), np.random.randint(1,self.width-1), np.random.randint(1,self.height-1))
+
+        else:
+            raise ValueError(f"Unknown action: {action}")
+
+        if self.step_count >= self.max_steps:
+            truncated = True
+
+        if self.render_mode == "human":
+            self.render()
+
+        obs = self.gen_obs()
+
+        return obs, reward, terminated, truncated, {}
+
+
+    def gen_obs_grid(self, agent_view_size=None):
+        grid = self.grid
+        vis_mask = np.ones(shape=(grid.width, grid.height), dtype=bool)
+        return grid, vis_mask
 
     @staticmethod
     def _gen_mission():
