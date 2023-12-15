@@ -4,6 +4,7 @@ environment:
     max_steps: 100
     tile_size: 28
     window: 3
+    obs_img: True
 gamma: 0.99
 lamda: 0.95
 updates: 50

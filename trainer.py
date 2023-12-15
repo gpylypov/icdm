@@ -38,6 +38,7 @@ class PPOTrainer:
             project="my-awesome-project",
             # Track hyperparameters and run metadata
             config=self.config,
+            job_type=str(config["recurrence"]['reset_hidden_state'])+"-"+config["environment"]["type"],
             mode="offline"
         )
 

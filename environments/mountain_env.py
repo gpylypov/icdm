@@ -7,16 +7,17 @@ from collections import deque
 from environments.forever_empty import ForeverEmptyEnv
 
 class Mountaingrid:
-    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25):
+    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25, obs_img = True):
         
         # Set the environment rendering mode
         self._realtime_mode = realtime_mode
         render_mode = "human" if realtime_mode else "rgb_array"
         self.size = size
         #self._env = gym.make(env_name, agent_view_size = 3, tile_size=28, render_mode=render_mode)
-        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size)
+        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size, obs_img=obs_img)
         self.window = window
-        self.decay = 0.9
+        self.decay = 0.7
+        self.obs_img = obs_img
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         # self._env = RGBImgPartialObsWrapper(self._env, tile_size=28)
@@ -42,12 +43,16 @@ class Mountaingrid:
         self._rewards = []
         self.time = 1
         obs, _ = self._env.reset(seed=np.random.randint(0, 99))
-        obs = obs["image"].astype(np.float32) / 255.
-        # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            # To conform PyTorch requirements, the channel dimension has to be first.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
         
-        return obs
+        if self.obs_img:
+            return obs
+        else:
+            return (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
 
     def softreset(self):
         self._rewards = []
@@ -60,7 +65,10 @@ class Mountaingrid:
             obs, reward, done, truncated, info = self._env.step(action[0])
         else:
             self._env.step_count += 1
-            obs = self._env.gen_obs()
+            if self.obs_img:
+                obs = self._env.gen_obs()
+            else:
+                obs = (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
             reward = 0
             done = False
             truncated = (self._env.step_count % self._env.max_steps == 0)
@@ -68,15 +76,17 @@ class Mountaingrid:
 
         
         self._rewards.append(reward)
-        obs = obs["image"].astype(np.float32) / 255.
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
         if done or truncated:
             info = {"reward": sum(self._rewards),
                     "length": len(self._rewards)}
         else:
             info = None
         # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
+        
         self.time += 1
         return obs, reward, done or truncated, info
 
@@ -86,12 +96,22 @@ class Mountaingrid:
         return (np.random.rand() > self.sigmoid(self.heights[tuple(next)]-self.heights[tuple(curr)]))
 
     def sigmoid(self,x):
-        return 1/(1+np.exp(-x))
+        if x <= 0:
+            return 0
+        if x > 0:
+            return 1-np.exp(-2.5*x)
 
     def render(self):
         img = self._env.render()
         time.sleep(0.5)
-        return img
+        a = self.heights
+        a=a*1/a.sum()
+        heat = np.zeros((140,140,3))
+        for i in range(140):
+            for j in range(140):
+                heat[(j,i,2)] = a[(i//28,j//28)]
+                heat[(j,i,0)] = a[(i//28,j//28)]
+        return np.add(1/384*img,2*heat)
 
     def one_hot(self, pair):
         tens = np.zeros((self.size,self.size))

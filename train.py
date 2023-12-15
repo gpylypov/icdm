@@ -1,7 +1,7 @@
 import torch
 from docopt import docopt
 from trainer import PPOTrainer
-from store_memory_trainer import PPOTrainerStoringMemory
+from icdm_trainer import ICDMTrainer
 from yaml_parser import YamlParser
 
 def main():
@@ -34,7 +34,7 @@ def main():
 
     trainers={
         "train-ppo": PPOTrainer, #trains with PPO 
-        "train-ppo-with-memory": PPOTrainerStoringMemory # additionally creates 
+        "icdm-training": ICDMTrainer # additionally creates 
     }
     # Initialize the PPO trainer and commence training
     print(config)

@@ -7,15 +7,16 @@ from collections import deque
 from environments.forever_empty import ForeverEmptyEnv
 
 class Entropygrid:
-    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25):
+    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25, obs_img = True):
         
         # Set the environment rendering mode
         self._realtime_mode = realtime_mode
         render_mode = "human" if realtime_mode else "rgb_array"
         self.size = size
         #self._env = gym.make(env_name, agent_view_size = 3, tile_size=28, render_mode=render_mode)
-        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size, has_goal = False)
+        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size, has_goal = False, obs_img = obs_img)
         self.window = window
+        self.obs_img = obs_img
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         # self._env = RGBImgPartialObsWrapper(self._env, tile_size=28)
@@ -41,12 +42,15 @@ class Entropygrid:
         self.pos_history = deque(maxlen=self.window)
         self.time = 1
         obs, _ = self._env.reset(seed=np.random.randint(0, 99))
-        obs = obs["image"].astype(np.float32) / 255.
-        # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
-        
-        return obs
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            # To conform PyTorch requirements, the channel dimension has to be first.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
+        if self.obs_img:
+            return obs
+        else:
+            return (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
 
     def softreset(self):
         self._rewards = []
@@ -56,15 +60,17 @@ class Entropygrid:
         self.pos_history.append(self.one_hot(self._env.agent_pos))
         reward = self.entropy(self.pos_history)
         self._rewards.append(reward)
-        obs = obs["image"].astype(np.float32) / 255.
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
         if done or truncated:
             info = {"reward": sum(self._rewards),
                     "length": len(self._rewards)}
         else:
             info = None
         # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
+        
         self.time += 1
         
         return obs, reward, done or truncated, info
@@ -81,8 +87,9 @@ class Entropygrid:
             heat = np.zeros((140,140,3))
             for i in range(140):
                 for j in range(140):
-                    heat[(i,j,0)] = (int) (100*a[(i//28,j//28)])
-            return np.add(2/3*img,1/3*heat)
+                    heat[(j,i,1)] = a[(i//28,j//28)]
+                    heat[(j,i,0)] = a[(i//28,j//28)]
+            return np.add(1/384*img,2*heat)
         return img
         
 

@@ -13,7 +13,16 @@ from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 import wandb
 
-class PPOTrainerStoringMemory:
+import os
+import numpy as np
+import torch
+import pdb
+import trajectory.utils as utils
+# import trajectory.datasets as datasets
+from trajectory.models.transformers import GPT
+
+
+class ICDMTrainer:
     def __init__(self, config:dict, run_id:str="run", device:torch.device=torch.device("cpu")) -> None:
         """Initializes all needed training components.
 
@@ -31,20 +40,129 @@ class PPOTrainerStoringMemory:
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
 
+        self.args = {'N': 5,
+        'action_weight': 5,
+        'alpha': 10000,
+        'attn_pdrop': 0.1,
+        'batch_size': 256,
+        'commit': '13d88cc5c9275361fd1e06559619cea44c744a59 main',
+        'config': 'config.offline',
+        'dataset': 'halfcheetah-medium-expert-v2',
+        'device': 'cuda',
+        'discount': 0.99,
+        'discretizer': 'QuantileDiscretizer',
+        'embd_pdrop': 0.1,
+        'exp_name': 'gpt/azure',
+        'learning_rate': 0.0006,
+        'logbase': 'logs/',
+        'lr_decay': True,
+        'n_embd': 32,
+        'n_epochs': 4,
+        'n_epochs_ref': 50,
+        'n_head': 4,
+        'n_layer': 4,
+        'n_saves': 500,
+        'num_batches': 10,
+        'resid_pdrop': 0.1,
+        'reward_weight': 1,
+        'savepath': 'logs/',
+        'inttrajsavepath': 'logs/testing',
+        'seed': 42,
+        'step': 1,
+        'subsampled_sequence_length': 1000,
+        'termination_penalty': -100,
+        'value_weight': 1}
+        print(self.args)
+
+        #######################
+        ######## model ########
+        #######################
+        print(self.args['subsampled_sequence_length'])
+        obs_dim = 5
+        act_dim = 1
+        transition_dim=obs_dim+act_dim
+        print(self.args['N'])
+        block_size = self.args['subsampled_sequence_length'] * transition_dim - 1 + 10
+        dataset_size = 300
+        print(
+            f'Dataset size: {dataset_size} | '
+            f'Joined dim: {transition_dim} '
+            f'(observation: {obs_dim}, action: {act_dim}) | Block size: {block_size}'
+        )
+
+        model_config = utils.Config(
+            GPT,
+            savepath=None, #(self.args['savepath'], 'model_config.pkl'),
+            ## discretization
+            vocab_size=self.args['N'], block_size=block_size,
+            ## architecture
+            n_layer=self.args['n_layer'], n_head=self.args['n_head'], n_embd=self.args['n_embd']*self.args['n_head'],
+            ## dimensions
+            observation_dim=obs_dim, action_dim=act_dim, transition_dim=transition_dim,
+            ## loss weighting
+            action_weight=self.args['action_weight'], reward_weight=self.args['reward_weight'], value_weight=self.args['value_weight'],
+            ## dropout probabilities
+            embd_pdrop=self.args['embd_pdrop'], resid_pdrop=self.args['resid_pdrop'], attn_pdrop=self.args['attn_pdrop'],
+        )
+
+        self.model = model_config()
+        self.model.to(self.args['device'])
+
+        #######################
+        ####### trainer #######
+        #######################
+
+        warmup_tokens = dataset_size * block_size ## number of tokens seen per epoch
+        final_tokens = 20 * warmup_tokens
+
+        trainer_config = utils.Config(
+            utils.Trainer,
+            savepath=None, #(self.args['savepath'], 'trainer_config.pkl'),
+            # optimization parameters
+            batch_size=self.args['batch_size'],
+            learning_rate=self.args['learning_rate'],
+            betas=(0.9, 0.95),
+            grad_norm_clip=1.0,
+            weight_decay=0.1, # only applied on matmul weights
+            # learning rate decay: linear warmup followed by cosine decay to 10% of original
+            lr_decay=self.args['lr_decay'],
+            warmup_tokens=warmup_tokens,
+            final_tokens=final_tokens,
+            ## dataloader
+            num_workers=0,
+            device=self.args['device'],
+            obs_dim = obs_dim,
+            act_dim = act_dim,
+            discount = self.args['discount'],
+            alpha = self.args['alpha'],
+            vocab_size=self.args['N'],
+            num_batches=self.args['num_batches'],
+            num_subsampled_seq = self.args['subsampled_sequence_length']
+        )
+
+        self.trainer = trainer_config()
+
+        #######################
+        ###### main loop ######
+        #######################
+
+        # statepath = os.path.join(self.args['savepath'], f'state_{save_epoch}.pt')
+        # print(f'Saving model to {statepath}')
+
+        # ## save state to disk
+        # state = model.state_dict()
+        # torch.save(state, statepath)
+
 
         run = wandb.init(
             # Set the project where this run will be logged
             project="my-awesome-project",
             # Track hyperparameters and run metadata
             config=self.config,
+            job_type="icdm-"+config["environment"]["type"],
             mode="offline"
         )
 
-        # # Setup Tensorboard Summary Writer
-        # if not os.path.exists("./summaries"):
-        #     os.makedirs("./summaries")
-        # timestamp = time.strftime("/%Y%m%d-%H%M%S" + "/")
-        # self.writer = SummaryWriter("./summaries/" + run_id + timestamp)
 
         # Init dummy environment and retrieve action and observation spaces
         print("Step 1: Init dummy environment")
@@ -58,24 +176,24 @@ class PPOTrainerStoringMemory:
         self.buffer = Buffer(self.config, self.observation_space, self.action_space_shape, self.device)
 
         # Init model
-        print("Step 3: Init model and optimizer")
-        self.model = ActorCriticModel(self.config, self.observation_space, self.action_space_shape).to(self.device)
-        self.model.train()
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
+        # print("Step 3: Init model and optimizer")
+        # self.model = ActorCriticModel(self.config, self.observation_space, self.action_space_shape).to(self.device)
+        # self.model.train()
+        # self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr_schedule["initial"])
 
         # Init workers
         print("Step 4: Init environment workers")
         self.workers = [Worker(self.config["environment"]) for w in range(self.config["n_workers"])]
 
         # Setup observation placeholder   
-        self.obs = np.zeros((self.config["n_workers"],) + self.observation_space.shape, dtype=np.float32)
+        self.obs = np.zeros((self.config["n_workers"], 5), dtype=np.float32)
 
         # Setup initial recurrent cell states (LSTM: tuple(tensor, tensor) or GRU: tensor)
-        hxs, cxs = self.model.init_recurrent_cell_states(self.config["n_workers"], self.device)
-        if self.recurrence["layer_type"] == "gru":
-            self.recurrent_cell = hxs
-        elif self.recurrence["layer_type"] == "lstm":
-            self.recurrent_cell = (hxs, cxs)
+        # hxs, cxs = self.model.init_recurrent_cell_states(self.config["n_workers"], self.device)
+        # if self.recurrence["layer_type"] == "gru":
+        #     self.recurrent_cell = hxs
+        # elif self.recurrence["layer_type"] == "lstm":
+        #     self.recurrent_cell = (hxs, cxs)
 
         # Reset workers (i.e. environments)
         print("Step 5: Reset workers")
@@ -88,47 +206,104 @@ class PPOTrainerStoringMemory:
     def run_training(self) -> None:
         """Runs the entire training logic from sampling data to optimizing the model."""
         print("Step 6: Starting training")
-        # Store episode results for monitoring statistics
-        episode_infos = deque(maxlen=100)
+        ## scale number of epochs to keep number of updates constant
+        n_epochs = self.args["n_epochs"]
 
+        history = {"satokens": torch.tensor(np.random.choice(5, (3, int(6e4)))),
+                    "rewards": torch.tensor(np.random.uniform(-1,1, (3, int(1e4))))}
+
+        context={"satokens": history["satokens"].to(self.args["device"]),
+        "rewards": history["rewards"].to(self.args["device"])}
+
+        # for update in range(NUM_UPDATES):
+        #     context <- as much of hitory as fits on gpu
+        #     additional_context <- collect data with transformer policy using context
+        #     train autoregressively on context[tokens]+additional_context[tokens] using 
+        #     empirrically calculateQ-weights discounted from context[rewards]+additional_context[rewards]
+
+        # model.load_state_dict(torch.load(self.args["savepath"]+"/state_3000.pt"))
+        # breakpoint()
+        print(context["satokens"].shape)
+        print(context["rewards"].shape)
+        # for epoch in range(n_epochs):
+        #     print(f'\nEpoch: {epoch} / {n_epochs} | {self.args["dataset"]} | {self.args["exp_name"]}')
+        #     self.trainer.train(self.model, context)
+        # Store episode results for monitoring statistics
+        # episode_infos = deque(maxlen=100)
+        num_workers=0
+        for w, worker in enumerate(self.workers):
+            num_workers+=1
+        
+        # self.obs
+        # breakpoint()
+        # context[num_workers by 5]
+        print("MAX SEQ LENGTH:", self.args['subsampled_sequence_length'])
+        context={"satokens": torch.zeros((num_workers, 1), dtype=torch.long).to(self.args["device"]),
+                "rewards": torch.zeros((num_workers, 1), dtype=torch.long).to(self.args["device"])}
         for update in range(self.config["updates"]):
             # Decay hyperparameters polynomially based on the provided config
-            learning_rate = polynomial_decay(self.lr_schedule["initial"], self.lr_schedule["final"], self.lr_schedule["max_decay_steps"], self.lr_schedule["power"], update)
-            beta = polynomial_decay(self.beta_schedule["initial"], self.beta_schedule["final"], self.beta_schedule["max_decay_steps"], self.beta_schedule["power"], update)
-            clip_range = polynomial_decay(self.cr_schedule["initial"], self.cr_schedule["final"], self.cr_schedule["max_decay_steps"], self.cr_schedule["power"], update)
+            print("Update:", update)
+            for t in range(self.config["worker_steps"]):
+                # Gradients can be omitted for sampling training data
+                # print(t)
+                context["satokens"]=torch.concat((context["satokens"], torch.tensor(self.obs).type(torch.long).to(self.args["device"])), dim=1)
+                with torch.no_grad():
+                    if(update==0):
+                        logits = self.model(context["satokens"][:, 1:])[0][:, -1, :]
+                    elif(update==1):
+                        logits = self.model(context["satokens"][:, :])[0][:, -1, :]
+                    elif(update>=2):
+                        logits = self.model(context["satokens"][:, -480:])[0][:, -1, :]
 
-            # Sample training data
-            sampled_episode_info = self._sample_training_data()
+                    # print(logits.shape)
+                    actions = torch.zeros((num_workers, 1), dtype=torch.long).to(device=self.args["device"])
 
-            # Prepare the sampled data inside the buffer (splits data into sequences)
-            self.buffer.prepare_batch_dict()
+                    for w in range(0, num_workers):
+                        # print(w)
+                        # print(logits)
+                        act_dist=torch.distributions.Categorical(logits=logits[w, :3])
+                        actions[w]=int(act_dist.sample())
+                    # print(actions)
 
-            # Train epochs
-            training_stats = self._train_epochs(learning_rate, clip_range, beta)
-            training_stats = np.mean(training_stats, axis=0)
+                # Send actions to the environments
+                
+                for w, worker in enumerate(self.workers):
+                    worker.child.send(("step", actions[w].cpu().numpy()))
 
-            # Store recent episode infos
-            episode_infos.extend(sampled_episode_info)
-            episode_result = self._process_episode_info(episode_infos)
+                rewards = torch.zeros((num_workers, 1)).to(device=self.args["device"])
+                # Retrieve step results from the environments
+                for w, worker in enumerate(self.workers):
+                    obs, rewards[w], _, info = worker.child.recv()
+                    if info:
+                        # # Store the information of the completed episode (e.g. total reward, episode length)
+                        # episode_infos.append(info)
+                        # Reset agent (potential interface for providing reset parameters)
+                        worker.child.send(("softreset", None))
+                        # Get data from reset
+                        worker.child.recv()
+                        # Reset recurrent cell states
+                    # Store latest observations
+                    self.obs[w] = obs
+                context["rewards"]=torch.concat((context["rewards"], rewards), dim=1)
 
-            # Print training statistics
-            if "success_percent" in episode_result:
-                result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} success = {:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                    update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], episode_result["success_percent"],
-                    training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(self.buffer.values), torch.mean(self.buffer.advantages))
-            else:
-                result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
-                    update, episode_result["reward_mean"], episode_result["reward_std"], episode_result["length_mean"], episode_result["length_std"], 
-                    training_stats[0], training_stats[1], training_stats[3], training_stats[2], torch.mean(self.buffer.values), torch.mean(self.buffer.advantages))
-            print(result)
+            if(update==0):
+                context["satokens"]=context["satokens"][:, 1:]
+                context["rewards"]=context["rewards"][:, 1:]
 
-            # Write training statistics to tensorboard
-            self._write_training_summary(update, training_stats, episode_result)
+            wandb.log({"training/value_mean": context["rewards"][:, -255:].sum()/(num_workers*256)})
+            print("avg_rewards", context["rewards"][:, -255:].sum()/(num_workers*256))
+            # breakpoint()
+            for epoch in range(n_epochs):
+                print(f'\nEpoch: {epoch} / {n_epochs} | {self.args["dataset"]} | {self.args["exp_name"]}')
+                self.trainer.train(self.model, context)
+            # breakpoint()
+            print(context["satokens"].shape)
+            print(context["rewards"].shape)
             
             # Free memory
-            del(self.buffer.samples_flat)
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
+            # del(self.buffer.samples_flat)
+            # if self.device.type == "cuda":
+            #     torch.cuda.empty_cache()
 
         # Save the trained model at the end of the training
         self._save_model()

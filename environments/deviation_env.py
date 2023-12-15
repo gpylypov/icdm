@@ -6,15 +6,16 @@ from minigrid.wrappers import *
 from environments.forever_empty import ForeverEmptyEnv
 
 class Deviategrid:
-    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False):
+    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, obs_img=True):
         
         # Set the environment rendering mode
         self._realtime_mode = realtime_mode
         render_mode = "human" if realtime_mode else "rgb_array"
             
         #self._env = gym.make(env_name, agent_view_size = 3, tile_size=28, render_mode=render_mode)
-        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size)
+        self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size,obs_img=obs_img)
 
+        self.obs_img = obs_img
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         # self._env = RGBImgPartialObsWrapper(self._env, tile_size=28)
@@ -40,35 +41,41 @@ class Deviategrid:
         self.act_history = {}
         self.time = 1
         obs, _ = self._env.reset(seed=np.random.randint(0, 99))
-        obs = obs["image"].astype(np.float32) / 255.
-        # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            # To conform PyTorch requirements, the channel dimension has to be first.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
         
-        return obs
+        if self.obs_img:
+            return obs
+        else:
+            return (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
 
     def softreset(self):
         self._rewards = []
 
     def _reward(self):
         #overrides goal reward
-        return 0
+        return 1
 
     def step(self, action):
         obs, reward, done, truncated, info = self._env.step(action[0])
         self.act_history[self.time] = action
-        if self.time >= 6 and self.act_history[self.time-5] == action:
-            reward += -1
+        if self.time >= 2 and self.time % 2 == 0 and self.act_history[self.time/2] == action:
+            reward += -0.2
         self._rewards.append(reward)
-        obs = obs["image"].astype(np.float32) / 255.
+        if(self.obs_img):
+            obs = obs["image"].astype(np.float32) / 255.
+            obs = np.swapaxes(obs, 0, 2)
+            obs = np.swapaxes(obs, 2, 1)
         if done or truncated:
             info = {"reward": sum(self._rewards),
                     "length": len(self._rewards)}
         else:
             info = None
         # To conform PyTorch requirements, the channel dimension has to be first.
-        obs = np.swapaxes(obs, 0, 2)
-        obs = np.swapaxes(obs, 2, 1)
+        
         self.time += 1
         
         return obs, reward, done or truncated, info

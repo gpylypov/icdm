@@ -63,14 +63,14 @@ class Trainer:
             # for a tensor of indices of length n*(state_length+action_length), 
             # we take [i*(state_length+action_length): j*(state_length+action_length)] splice and train on it
             # num_batches=10
-            batches = np.random.choice(num_states-self.num_subsampled_seq, self.num_batches)
+            batches = np.random.choice(max(num_states-self.num_subsampled_seq, 1), self.num_batches)
             # batches = [0, 0, 0]
             print(batches)
 
             for it, i in enumerate(batches):
                 # print("iteration ", it)
                 # print("i", i)
-                j=i+self.num_subsampled_seq
+                j=i+min(num_states, self.num_subsampled_seq)
                 seq_to_be_autoregressed = satokens[:, i*(self.state_length+self.action_length): j*(self.state_length+self.action_length)]
                 # seq_to_be_autoregressed = to(satokens[:, i*(self.state_length+self.action_length): j*(self.state_length+self.action_length)], self.device)
                 # print("Input sequence shape: ", seq_to_be_autoregressed.shape)
@@ -93,11 +93,13 @@ class Trainer:
                     logits, _ = model(seq_to_be_autoregressed)
                     # print(logits.shape)
                     # print(logits.reshape(-1, logits.size(-1)).shape)
+                    # breakpoint()
+                    # float_version=seq_to_be_autoregressed[:, 1:].reshape(-1).type(torch.float32)
                     loss = F.cross_entropy(logits[:, :-1, :].reshape(-1, logits.size(-1)), seq_to_be_autoregressed[:, 1:].reshape(-1), reduction='none').reshape(batch_size, -1)
                     # print("Loss shape: ", loss.shape)
                     #weighting by Q values and beta
                     # currently action prediction at self.state_length+k(self.state_length+self.action_length)
-                    act_pred_weights=self.alpha*torch.exp(associated_emp_q_estimates)
+                    act_pred_weights=-1*self.alpha*torch.exp(associated_emp_q_estimates)
                     weight_mults = torch.cat((torch.ones(batch_size, j-i, self.state_length).to(device=self.device), associated_emp_q_estimates.reshape(batch_size, j-i, 1)), dim=2).reshape(batch_size, -1)[:, 1:]
                     # print(weight_mults)
                     loss = torch.sum(loss*weight_mults)/(batch_size*((j-i)*(self.state_length+self.action_length)-1))

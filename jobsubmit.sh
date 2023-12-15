@@ -20,6 +20,6 @@ module load anaconda/2023a
 cd $HOME/icdm
 
 python -c "import torch; print(torch.cuda.device_count())"
-python train.py --config=./configs/dev.yaml 
+python train.py --config=./configs/entropy.yaml 
 # --gpu-device -1
 #python scripts/run_image.py config/image/pretrain_viewmaker_cifar10_simclr.json --gpu-device -1

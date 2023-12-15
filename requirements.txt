@@ -8,3 +8,4 @@ reprint==0.6.0
 ruamel.yaml
 tblib
 tensorboard==2.0.2
+typed-argument-parser

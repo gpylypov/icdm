@@ -76,6 +76,7 @@ class ForeverEmptyEnv(MiniGridEnv):
         agent_start_pos=(1, 1),
         agent_start_dir=0,
         tile_size = 28,
+        obs_img = True,
         has_goal = True,
         max_steps: int | None = None,
         render_mode: str | None = None,
@@ -101,6 +102,9 @@ class ForeverEmptyEnv(MiniGridEnv):
         )
         self.tile_size = tile_size
         self.has_goal = has_goal
+        self.obs_img = obs_img
+        self.goal_spot = (0,0)
+
         
     def _reward(self):
         #return 1    
@@ -139,7 +143,10 @@ class ForeverEmptyEnv(MiniGridEnv):
                 # terminated = True
                 reward = self._reward()
                 self.grid.set(fwd_pos[0], fwd_pos[1], None)
-                self.put_obj(Goal(), np.random.randint(1,self.width-1), np.random.randint(1,self.height-1))
+                i =  np.random.randint(1,self.width-1)
+                j =  np.random.randint(1,self.height-1)
+                self.put_obj(Goal(), i, j)
+                self.goal_spot = (i,j)
 
         else:
             raise ValueError(f"Unknown action: {action}")
@@ -149,8 +156,11 @@ class ForeverEmptyEnv(MiniGridEnv):
 
         if self.render_mode == "human":
             self.render()
-
-        obs = self.gen_obs()
+        
+        if self.obs_img:
+            obs = self.gen_obs()
+        else:
+            obs = (self.agent_start_pos[0],self.agent_start_pos[1],self.goal_spot[0],self.goal_spot[1],self.agent_dir)
         return obs, reward, terminated, truncated, {}
 
 
@@ -170,7 +180,10 @@ class ForeverEmptyEnv(MiniGridEnv):
 
         # Place a goal square in the bottom-right corner
         if self.has_goal:
-            self.put_obj(Goal(), np.random.randint(1,width-1), np.random.randint(1,height-1))
+            i =  np.random.randint(1,self.width-1)
+            j =  np.random.randint(1,self.height-1)
+            self.put_obj(Goal(), i, j)
+            self.goal_spot = (i,j)
 
         # Place the agent
         if self.agent_start_pos is not None:

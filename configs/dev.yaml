@@ -3,9 +3,10 @@ environment:
     size: 5
     max_steps: 100
     tile_size: 28
+    obs_img: True
 gamma: 0.99
 lamda: 0.95
-updates: 300
+updates: 100
 epochs: 4
 n_workers: 16
 worker_steps: 256
@@ -17,7 +18,7 @@ recurrence:
     sequence_length: 8
     hidden_state_size: 256
     layer_type: lstm
-    reset_hidden_state: False
+    reset_hidden_state: True
 learning_rate_schedule:
     initial: 2.0e-4
     final: 2.0e-4

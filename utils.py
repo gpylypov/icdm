@@ -25,13 +25,13 @@ def create_env(config:dict, render:bool=False):
     if config["type"] == "Minigrid":
         return Minigrid(env_name = config["name"], realtime_mode = render)
     if config["type"] == "Deviategrid":
-        return Deviategrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+        return Deviategrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], obs_img = config["obs_img"])
     if config["type"] == "Vanillagrid":
-        return Vanillagrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+        return Vanillagrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], obs_img = config["obs_img"])
     if config["type"] == "Mountaingrid":
-        return Mountaingrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+        return Mountaingrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], obs_img = config["obs_img"])
     if config["type"] == "Entropygrid":
-        return Entropygrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], window = config["window"])
+        return Entropygrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], obs_img = config["obs_img"], window = config["window"])
     if config["type"] == "MemoryGym":
         return MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"], realtime_mode = render)
 
