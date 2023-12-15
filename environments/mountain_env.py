@@ -3,22 +3,25 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from minigrid.wrappers import *
+from collections import deque
 from environments.forever_empty import ForeverEmptyEnv
 
-class Deviategrid:
-    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False):
+class Mountaingrid:
+    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25):
         
         # Set the environment rendering mode
         self._realtime_mode = realtime_mode
         render_mode = "human" if realtime_mode else "rgb_array"
-            
+        self.size = size
         #self._env = gym.make(env_name, agent_view_size = 3, tile_size=28, render_mode=render_mode)
         self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size)
-
+        self.window = window
+        self.decay = 0.9
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         # self._env = RGBImgPartialObsWrapper(self._env, tile_size=28)
         # self._env = ImgObsWrapper(self._env)
+        self.heights = np.zeros((size,size))
         self._observation_space = spaces.Box(
                 low = 0,
                 high = 1.0,
@@ -37,7 +40,6 @@ class Deviategrid:
 
     def reset(self):
         self._rewards = []
-        self.act_history = {}
         self.time = 1
         obs, _ = self._env.reset(seed=np.random.randint(0, 99))
         obs = obs["image"].astype(np.float32) / 255.
@@ -50,15 +52,21 @@ class Deviategrid:
     def softreset(self):
         self._rewards = []
 
-    def _reward(self):
-        #overrides goal reward
-        return 0
-
     def step(self, action):
-        obs, reward, done, truncated, info = self._env.step(action[0])
-        self.act_history[self.time] = action
-        if self.time >= 6 and self.act_history[self.time-5] == action:
-            reward += -1
+        if (action[0] != 2) or (self.can_climb(self._env.agent_pos, self._env.front_pos)):
+        #if action[0] != 2:
+            if action[0] == 2:
+                self.heights = np.add(self.decay*self.heights,self.one_hot(self._env.agent_pos))
+            obs, reward, done, truncated, info = self._env.step(action[0])
+        else:
+            self._env.step_count += 1
+            obs = self._env.gen_obs()
+            reward = 0
+            done = False
+            truncated = (self._env.step_count % self._env.max_steps == 0)
+            info = {}
+
+        
         self._rewards.append(reward)
         obs = obs["image"].astype(np.float32) / 255.
         if done or truncated:
@@ -70,13 +78,25 @@ class Deviategrid:
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
         self.time += 1
-        
         return obs, reward, done or truncated, info
+
+    def can_climb(self, curr, next):
+        # print(self.heights)
+        # print(next)
+        return (np.random.rand() > self.sigmoid(self.heights[tuple(next)]-self.heights[tuple(curr)]))
+
+    def sigmoid(self,x):
+        return 1/(1+np.exp(-x))
 
     def render(self):
         img = self._env.render()
         time.sleep(0.5)
         return img
+
+    def one_hot(self, pair):
+        tens = np.zeros((self.size,self.size))
+        tens[pair[0], pair[1]] = 1
+        return tens
 
     def close(self):
         self._env.close()

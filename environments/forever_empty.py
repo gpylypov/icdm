@@ -75,6 +75,8 @@ class ForeverEmptyEnv(MiniGridEnv):
         size=8,
         agent_start_pos=(1, 1),
         agent_start_dir=0,
+        tile_size = 28,
+        has_goal = True,
         max_steps: int | None = None,
         render_mode: str | None = None,
         **kwargs,
@@ -84,8 +86,7 @@ class ForeverEmptyEnv(MiniGridEnv):
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
-        if max_steps is None:
-            max_steps = 4 * size**2
+        assert max_steps is not None
 
         super().__init__(
             mission_space=mission_space,
@@ -98,11 +99,12 @@ class ForeverEmptyEnv(MiniGridEnv):
             highlight=False,
             **kwargs,
         )
+        self.tile_size = tile_size
+        self.has_goal = has_goal
         
     def _reward(self):
         #return 1    
-        return 1 - 0.9 * (self.step_count / self.max_steps)
-
+        return 1
 
     def step(
         self, action: ActType
@@ -142,21 +144,18 @@ class ForeverEmptyEnv(MiniGridEnv):
         else:
             raise ValueError(f"Unknown action: {action}")
 
-        if self.step_count >= self.max_steps:
+        if self.step_count % self.max_steps == 0:
             truncated = True
 
         if self.render_mode == "human":
             self.render()
 
         obs = self.gen_obs()
-
         return obs, reward, terminated, truncated, {}
 
 
-    def gen_obs_grid(self, agent_view_size=None):
-        grid = self.grid
-        vis_mask = np.ones(shape=(grid.width, grid.height), dtype=bool)
-        return grid, vis_mask
+    def gen_obs(self):
+        return {"image": self.get_frame(highlight=None, tile_size=self.tile_size), "direction": self.agent_dir, "mission": self.mission}
 
     @staticmethod
     def _gen_mission():
@@ -170,7 +169,8 @@ class ForeverEmptyEnv(MiniGridEnv):
         self.grid.wall_rect(0, 0, width, height)
 
         # Place a goal square in the bottom-right corner
-        self.put_obj(Goal(), np.random.randint(1,width-1), np.random.randint(1,height-1))
+        if self.has_goal:
+            self.put_obj(Goal(), np.random.randint(1,width-1), np.random.randint(1,height-1))
 
         # Place the agent
         if self.agent_start_pos is not None:

@@ -3,18 +3,19 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from minigrid.wrappers import *
+from collections import deque
 from environments.forever_empty import ForeverEmptyEnv
 
-class Deviategrid:
-    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False):
+class Vanillagrid:
+    def __init__(self, size, max_steps = 100, tile_size = 28, realtime_mode = False, window = 25):
         
         # Set the environment rendering mode
         self._realtime_mode = realtime_mode
         render_mode = "human" if realtime_mode else "rgb_array"
-            
+        self.size = size
         #self._env = gym.make(env_name, agent_view_size = 3, tile_size=28, render_mode=render_mode)
         self._env = ForeverEmptyEnv(size=size, render_mode=render_mode, max_steps=max_steps, tile_size = tile_size)
-
+        self.window = window
         # Decrease the agent's view size to raise the agent's memory challenge
         # On MiniGrid-Memory-S7-v0, the default view size is too large to actually demand a recurrent policy.
         # self._env = RGBImgPartialObsWrapper(self._env, tile_size=28)
@@ -37,7 +38,6 @@ class Deviategrid:
 
     def reset(self):
         self._rewards = []
-        self.act_history = {}
         self.time = 1
         obs, _ = self._env.reset(seed=np.random.randint(0, 99))
         obs = obs["image"].astype(np.float32) / 255.
@@ -50,15 +50,8 @@ class Deviategrid:
     def softreset(self):
         self._rewards = []
 
-    def _reward(self):
-        #overrides goal reward
-        return 0
-
     def step(self, action):
         obs, reward, done, truncated, info = self._env.step(action[0])
-        self.act_history[self.time] = action
-        if self.time >= 6 and self.act_history[self.time-5] == action:
-            reward += -1
         self._rewards.append(reward)
         obs = obs["image"].astype(np.float32) / 255.
         if done or truncated:
@@ -70,7 +63,6 @@ class Deviategrid:
         obs = np.swapaxes(obs, 0, 2)
         obs = np.swapaxes(obs, 2, 1)
         self.time += 1
-        
         return obs, reward, done or truncated, info
 
     def render(self):

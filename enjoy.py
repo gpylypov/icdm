@@ -53,7 +53,7 @@ def main():
 
     # Instantiate environment
     print(config["environment"])
-    if(config["environment"]['type']=="Deviategrid"):
+    if(config["environment"]['type'] in {"Deviategrid", "Vanillagrid", "Entropygrid", "Mountaingrid"}):
         env = create_env(config["environment"])
     else:
         env = create_env(config["environment"], render=True)

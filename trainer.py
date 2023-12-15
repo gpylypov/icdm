@@ -30,6 +30,7 @@ class PPOTrainer:
         self.lr_schedule = config["learning_rate_schedule"]
         self.beta_schedule = config["beta_schedule"]
         self.cr_schedule = config["clip_range_schedule"]
+        #self.gotten_obs = []
 
 
         run = wandb.init(
@@ -109,8 +110,7 @@ class PPOTrainer:
 
             # Store recent episode infos
             episode_infos.extend(sampled_episode_info)
-            episode_result = self._process_episode_info(episode_infos)
-
+            episode_result = self._process_episode_info(sampled_episode_info)
             # Print training statistics
             if "success_percent" in episode_result:
                 result = "{:4} reward={:.2f} std={:.2f} length={:.1f} std={:.2f} success = {:.2f} pi_loss={:3f} v_loss={:3f} entropy={:.3f} loss={:3f} value={:.3f} advantage={:.3f}".format(
@@ -170,17 +170,23 @@ class PPOTrainer:
             # Send actions to the environments
             for w, worker in enumerate(self.workers):
                 worker.child.send(("step", self.buffer.actions[w, t].cpu().numpy()))
+                # print(self.buffer.actions[w, t])
 
             # Retrieve step results from the environments
             for w, worker in enumerate(self.workers):
                 obs, self.buffer.rewards[w, t], self.buffer.dones[w, t], info = worker.child.recv()
+                # print([obs[1][i][1:4] for i in range(,4)])
+                # time.sleep(0.5)
+                #self.gotten_obs.append(obs)
                 if info:
                     # Store the information of the completed episode (e.g. total reward, episode length)
                     episode_infos.append(info)
                     # Reset agent (potential interface for providing reset parameters)
                     worker.child.send(("reset", None))
+                    #worker.child.send(("softreset", None))
+                    worker.child.recv()
                     # Get data from reset
-                    obs = worker.child.recv()
+                    #obs = worker.child.recv()
                     # Reset recurrent cell states
                     if self.recurrence["reset_hidden_state"]:
                         hxs, cxs = self.model.init_recurrent_cell_states(1, self.device)
@@ -191,11 +197,10 @@ class PPOTrainer:
                             self.recurrent_cell[1][:, w] = cxs
                 # Store latest observations
                 self.obs[w] = obs
-                            
         # Calculate advantages
         _, last_value, _ = self.model(torch.tensor(self.obs), self.recurrent_cell, self.device)
         self.buffer.calc_advantages(last_value, self.config["gamma"], self.config["lamda"])
-
+        #breakpoint()
         return episode_infos
 
     def _train_epochs(self, learning_rate:float, clip_range:float, beta:float) -> list:

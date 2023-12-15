@@ -3,6 +3,9 @@ from environments.minigrid_env import Minigrid
 from environments.deviation_env import Deviategrid
 from environments.poc_memory_env import PocMemoryEnv
 from environments.memory_gym_env import MemoryGymWrapper
+from environments.entropy_env import Entropygrid
+from environments.vanilla_goals import Vanillagrid
+from environments.mountain_env import Mountaingrid
 
 def create_env(config:dict, render:bool=False):
     """Initializes an environment based on the provided environment name.
@@ -22,7 +25,13 @@ def create_env(config:dict, render:bool=False):
     if config["type"] == "Minigrid":
         return Minigrid(env_name = config["name"], realtime_mode = render)
     if config["type"] == "Deviategrid":
-        return Deviategrid(size = config["size"],  realtime_mode = render)
+        return Deviategrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+    if config["type"] == "Vanillagrid":
+        return Vanillagrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+    if config["type"] == "Mountaingrid":
+        return Mountaingrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"])
+    if config["type"] == "Entropygrid":
+        return Entropygrid(size = config["size"],  realtime_mode = render, max_steps = config["max_steps"], tile_size = config["tile_size"], window = config["window"])
     if config["type"] == "MemoryGym":
         return MemoryGymWrapper(env_name = config["name"], reset_params=config["reset_params"], realtime_mode = render)
 
