@@ -1,0 +1,9 @@
+/home/gridsan/gpylypovych/icdm1/trajectory-transformer
+/var/spool/slurmd/job24493920/slurm_script: line 6: module: command not found
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'torch'
+Traceback (most recent call last):
+  File "/home/gridsan/gpylypovych/icdm1/trajectory-transformer/scripts/train.py", line 3, in <module>
+    import torch
+ModuleNotFoundError: No module named 'torch'
