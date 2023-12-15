@@ -1,0 +1,65 @@
+1
+slurmstepd-d-12-9-1: error: *** JOB 24494136 ON d-12-9-1 CANCELLED AT 2023-12-15T13:13:58 ***
+1
+  File "/home/gridsan/gpylypovych/icdm1/scripts/train.py", line 64
+    'n_epochs_ref': 50,
+    ^
+SyntaxError: invalid syntax
+1
+  File "/home/gridsan/gpylypovych/icdm1/scripts/train.py", line 172
+    context {"satokens": history["satokens"].to(args["device"]),
+            ^
+SyntaxError: invalid syntax
+1
+{'N': 5, 'action_weight': 5, 'alpha': 0.05, 'attn_pdrop': 0.1, 'batch_size': 256, 'commit': '13d88cc5c9275361fd1e06559619cea44c744a59 main', 'config': 'config.offline', 'dataset': 'halfcheetah-medium-expert-v2', 'device': 'cuda', 'discount': 0.99, 'discretizer': 'QuantileDiscretizer', 'embd_pdrop': 0.1, 'exp_name': 'gpt/azure', 'learning_rate': 0.0006, 'logbase': 'logs/', 'lr_decay': True, 'n_embd': 32, 'n_epochs': 100, 'n_epochs_ref': 50, 'n_head': 4, 'n_layer': 4, 'n_saves': 500, 'num_batches': 3, 'resid_pdrop': 0.1, 'reward_weight': 1, 'savepath': 'logs/', 'inttrajsavepath': 'logs/testing', 'seed': 42, 'step': 1, 'subsampled_sequence_length': 1000, 'termination_penalty': -100, 'value_weight': 1}
+1000
+5
+Dataset size: 300 | Joined dim: 6 (observation: 5, action: 1) | Block size: 6009
+
+Config: <class 'trajectory.models.transformers.GPT'>
+    action_dim: 1
+    action_weight: 5
+    attn_pdrop: 0.1
+    block_size: 6009
+    embd_pdrop: 0.1
+    n_embd: 128
+    n_head: 4
+    n_layer: 4
+    observation_dim: 5
+    resid_pdrop: 0.1
+    reward_weight: 1
+    transition_dim: 6
+    value_weight: 1
+    vocab_size: 5
+
+
+Config: <class 'trajectory.utils.training.Trainer'>
+    act_dim: 1
+    alpha: 0.05
+    batch_size: 256
+    betas: (0.9, 0.95)
+    device: cuda
+    discount: 0.99
+    final_tokens: 36054000
+    grad_norm_clip: 1.0
+    learning_rate: 0.0006
+    lr_decay: True
+    num_batches: 3
+    num_subsampled_seq: 1000
+    num_workers: 0
+    obs_dim: 5
+    vocab_size: 5
+    warmup_tokens: 1802700
+    weight_decay: 0.1
+
+torch.Size([3, 60000])
+torch.Size([3, 10000])
+
+Epoch: 0 / 100 | halfcheetah-medium-expert-v2 | gpt/azure
+[ utils/training ] Making optimizer at epoch 0
+[2140 3836   62]
+[ utils/training ] epoch 0 [    0 /    3 ]  train loss 1.74065 | lr 1.997e-06 | lr_mult: 0.0033 | t: 0.70
+Traceback (most recent call last):
+  File "/home/gridsan/gpylypovych/icdm1/scripts/train.py", line 195, in <module>
+    save_epoch = (epoch + 1) // save_freq * save_freq
+ZeroDivisionError: integer division or modulo by zero

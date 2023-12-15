@@ -5,7 +5,7 @@ environment:
     tile_size: 28
 gamma: 0.99
 lamda: 0.95
-updates: 50
+updates: 300
 epochs: 4
 n_workers: 16
 worker_steps: 256
