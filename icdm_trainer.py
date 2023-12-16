@@ -42,7 +42,7 @@ class ICDMTrainer:
 
         self.args = {'N': 5,
         'action_weight': 5,
-        'alpha': 10000,
+        'alpha': 1,
         'attn_pdrop': 0.1,
         'batch_size': 256,
         'commit': '13d88cc5c9275361fd1e06559619cea44c744a59 main',
@@ -62,16 +62,17 @@ class ICDMTrainer:
         'n_head': 4,
         'n_layer': 4,
         'n_saves': 500,
-        'num_batches': 10,
+        'num_batches': 100,
         'resid_pdrop': 0.1,
         'reward_weight': 1,
         'savepath': 'logs/',
         'inttrajsavepath': 'logs/testing',
         'seed': 42,
         'step': 1,
-        'subsampled_sequence_length': 1000,
+        'subsampled_sequence_length': 5,
         'termination_penalty': -100,
-        'value_weight': 1}
+        'value_weight': 1,
+        'temperature': 1}
         print(self.args)
 
         #######################
@@ -137,7 +138,8 @@ class ICDMTrainer:
             alpha = self.args['alpha'],
             vocab_size=self.args['N'],
             num_batches=self.args['num_batches'],
-            num_subsampled_seq = self.args['subsampled_sequence_length']
+            num_subsampled_seq = self.args['subsampled_sequence_length'],
+            temperature = self.args['temperature']
         )
 
         self.trainer = trainer_config()
@@ -209,27 +211,6 @@ class ICDMTrainer:
         ## scale number of epochs to keep number of updates constant
         n_epochs = self.args["n_epochs"]
 
-        history = {"satokens": torch.tensor(np.random.choice(5, (3, int(6e4)))),
-                    "rewards": torch.tensor(np.random.uniform(-1,1, (3, int(1e4))))}
-
-        context={"satokens": history["satokens"].to(self.args["device"]),
-        "rewards": history["rewards"].to(self.args["device"])}
-
-        # for update in range(NUM_UPDATES):
-        #     context <- as much of hitory as fits on gpu
-        #     additional_context <- collect data with transformer policy using context
-        #     train autoregressively on context[tokens]+additional_context[tokens] using 
-        #     empirrically calculateQ-weights discounted from context[rewards]+additional_context[rewards]
-
-        # model.load_state_dict(torch.load(self.args["savepath"]+"/state_3000.pt"))
-        # breakpoint()
-        print(context["satokens"].shape)
-        print(context["rewards"].shape)
-        # for epoch in range(n_epochs):
-        #     print(f'\nEpoch: {epoch} / {n_epochs} | {self.args["dataset"]} | {self.args["exp_name"]}')
-        #     self.trainer.train(self.model, context)
-        # Store episode results for monitoring statistics
-        # episode_infos = deque(maxlen=100)
         num_workers=0
         for w, worker in enumerate(self.workers):
             num_workers+=1
@@ -240,30 +221,56 @@ class ICDMTrainer:
         print("MAX SEQ LENGTH:", self.args['subsampled_sequence_length'])
         context={"satokens": torch.zeros((num_workers, 1), dtype=torch.long).to(self.args["device"]),
                 "rewards": torch.zeros((num_workers, 1), dtype=torch.long).to(self.args["device"])}
+        print(context["satokens"].shape)
+        print(context["rewards"].shape)
         for update in range(self.config["updates"]):
             # Decay hyperparameters polynomially based on the provided config
             print("Update:", update)
+            # context_start_index=(context["satokens"].shape)[1]-6*0 #100
             for t in range(self.config["worker_steps"]):
+                # assert self.config["worker_steps"]%100==0
+                # if(t%100==0):
+                #     if(update==0 and t==0):
+                #         context_start_index=1
+                #     elif(update==0 and t==100):
+                #         context_start_index=context_start_index
+                #     elif(t==0):
+                #         context_start_index=(context["satokens"].shape)[1]-6*100
+                #     else:
+                #         context_start_index+=6*100
+                #     print(context_start_index, (context["satokens"].shape)[1])
+
+                    
                 # Gradients can be omitted for sampling training data
                 # print(t)
                 context["satokens"]=torch.concat((context["satokens"], torch.tensor(self.obs).type(torch.long).to(self.args["device"])), dim=1)
+                # print(context["satokens"].shape)
+                # if(update==1):
+                #     breakpoint()
                 with torch.no_grad():
-                    if(update==0):
+                    if(update==0 and t<self.args['subsampled_sequence_length']):
                         logits = self.model(context["satokens"][:, 1:])[0][:, -1, :]
-                    elif(update==1):
-                        logits = self.model(context["satokens"][:, :])[0][:, -1, :]
-                    elif(update>=2):
-                        logits = self.model(context["satokens"][:, -480:])[0][:, -1, :]
+                    else:
+                        logits = self.model(context["satokens"][:, -(6*self.args['subsampled_sequence_length']-1):])[0][:, -1, :]
+                    # elif(update==1):
+                    #     logits = self.model(context["satokens"][:, -(6*200-1):])[0][:, -1, :]
+                    # elif(update>=2):
+                    #     logits = self.model(context["satokens"][:, -(6*200-1):])[0][:, -1, :]
 
                     # print(logits.shape)
+                    # print("logits ", logits)
                     actions = torch.zeros((num_workers, 1), dtype=torch.long).to(device=self.args["device"])
-
+                    # print(actions)
+                    # print("obs ", torch.tensor(self.obs).type(torch.long).to(self.args["device"]))
                     for w in range(0, num_workers):
                         # print(w)
                         # print(logits)
                         act_dist=torch.distributions.Categorical(logits=logits[w, :3])
+
                         actions[w]=int(act_dist.sample())
                     # print(actions)
+                    context["satokens"] = torch.concat((context["satokens"], actions), dim=1)
+                    # print("actions ", actions)
 
                 # Send actions to the environments
                 
@@ -273,7 +280,9 @@ class ICDMTrainer:
                 rewards = torch.zeros((num_workers, 1)).to(device=self.args["device"])
                 # Retrieve step results from the environments
                 for w, worker in enumerate(self.workers):
+                    # print(w)
                     obs, rewards[w], _, info = worker.child.recv()
+                    # print(rewards[w])
                     if info:
                         # # Store the information of the completed episode (e.g. total reward, episode length)
                         # episode_infos.append(info)
@@ -290,8 +299,11 @@ class ICDMTrainer:
                 context["satokens"]=context["satokens"][:, 1:]
                 context["rewards"]=context["rewards"][:, 1:]
 
-            wandb.log({"training/value_mean": context["rewards"][:, -255:].sum()/(num_workers*256)})
-            print("avg_rewards", context["rewards"][:, -255:].sum()/(num_workers*256))
+
+            wandb.log({"training/value_mean": context["rewards"][:, -600:].sum()/(num_workers*600)})
+            print("avg_rewards", context["rewards"][:, -600:].sum()/(num_workers*600))
+
+            # breakpoint()
             # breakpoint()
             for epoch in range(n_epochs):
                 print(f'\nEpoch: {epoch} / {n_epochs} | {self.args["dataset"]} | {self.args["exp_name"]}')

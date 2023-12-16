@@ -52,7 +52,7 @@ class Mountaingrid:
         if self.obs_img:
             return obs
         else:
-            return (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
+            return (self._env.agent_pos[0],self._env.agent_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
 
     def softreset(self):
         self._rewards = []
@@ -68,7 +68,7 @@ class Mountaingrid:
             if self.obs_img:
                 obs = self._env.gen_obs()
             else:
-                obs = (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
+                obs = (self._env.agent_pos[0],self._env.agent_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
             reward = 0
             done = False
             truncated = (self._env.step_count % self._env.max_steps == 0)

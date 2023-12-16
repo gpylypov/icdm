@@ -50,7 +50,7 @@ class Deviategrid:
         if self.obs_img:
             return obs
         else:
-            return (self._env.agent_start_pos[0],self._env.agent_start_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
+            return (self._env.agent_pos[0],self._env.agent_pos[1],self._env.goal_spot[0],self._env.goal_spot[1],self._env.agent_dir)
 
     def softreset(self):
         self._rewards = []

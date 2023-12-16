@@ -1,10 +1,10 @@
 training_method: "icdm-training"
 environment:
-    type: "Entropygrid"
+    type: "Mountaingrid"
     size: 5
     max_steps: 100
     tile_size: 28
-    window: 25
+    window: 3
     obs_img: False
 gamma: 0.99
 lamda: 0.95

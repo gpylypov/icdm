@@ -160,7 +160,7 @@ class ForeverEmptyEnv(MiniGridEnv):
         if self.obs_img:
             obs = self.gen_obs()
         else:
-            obs = (self.agent_start_pos[0],self.agent_start_pos[1],self.goal_spot[0],self.goal_spot[1],self.agent_dir)
+            obs = (self.agent_pos[0],self.agent_pos[1],self.goal_spot[0],self.goal_spot[1],self.agent_dir)
         return obs, reward, terminated, truncated, {}
 
 

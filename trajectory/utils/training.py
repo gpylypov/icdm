@@ -26,6 +26,7 @@ class Trainer:
         self.vocab_size = config.vocab_size
         self.num_subsampled_seq = config.num_subsampled_seq
         self.num_batches = config.num_batches
+        self.temperature = config.temperature
 
     def get_optimizer(self, model):
         if self.optimizer is None:
@@ -67,6 +68,15 @@ class Trainer:
             # batches = [0, 0, 0]
             print(batches)
 
+            #Calculate empirical Q values
+            context_emp_q_estimates=torch.zeros((batch_size, num_states)).to(device=self.device)
+            running_estimate=torch.zeros((batch_size, )).to(device=self.device)
+            for ctr in range (0, num_states):
+                    running_estimate=self.discount*running_estimate
+                    context_emp_q_estimates[:, -1-ctr]=rewards[:, -1-ctr]+running_estimate
+                    running_estimate=context_emp_q_estimates[:, -1-ctr]
+            # baselineV=rewards.sum(1)
+
             for it, i in enumerate(batches):
                 # print("iteration ", it)
                 # print("i", i)
@@ -74,16 +84,19 @@ class Trainer:
                 seq_to_be_autoregressed = satokens[:, i*(self.state_length+self.action_length): j*(self.state_length+self.action_length)]
                 # seq_to_be_autoregressed = to(satokens[:, i*(self.state_length+self.action_length): j*(self.state_length+self.action_length)], self.device)
                 # print("Input sequence shape: ", seq_to_be_autoregressed.shape)
-                associated_emp_q_estimates= torch.zeros((batch_size, (j-i))).to(device=self.device)
+                associated_emp_q_estimates= context_emp_q_estimates[:, i:j]
+                baselineV=associated_emp_q_estimates.sum(dim=1)/(j-i)
+                # print(associated_emp_q_estimates)
+                # breakpoint()
+                #torch.zeros((batch_size, (j-i))).to(device=self.device)
 
-                #Calculate empirical Q values
-                running_estimate=torch.zeros((batch_size, )).to(device=self.device)
+                
                 # print(running_estimate.shape)
                 # print(associated_emp_q_estimates.shape)
-                for ctr in range (0, j-i):
-                    running_estimate=self.discount*running_estimate
-                    associated_emp_q_estimates[:, -1-ctr]=rewards[:, -1-ctr]+running_estimate
-                    running_estimate=associated_emp_q_estimates[:, -1-ctr]
+                # for ctr in range (0, j-i):
+                #     running_estimate=self.discount*running_estimate
+                #     associated_emp_q_estimates[:, -1-ctr]=rewards[:, -1-ctr]+running_estimate
+                #     running_estimate=associated_emp_q_estimates[:, -1-ctr]
                 # print("Q estimates shape: ", associated_emp_q_estimates.shape)
 
                 # batch = to(batch, self.device)
@@ -91,6 +104,7 @@ class Trainer:
                 # forward the model
                 with torch.set_grad_enabled(True):
                     logits, _ = model(seq_to_be_autoregressed)
+                    # breakpoint()
                     # print(logits.shape)
                     # print(logits.reshape(-1, logits.size(-1)).shape)
                     # breakpoint()
@@ -99,8 +113,11 @@ class Trainer:
                     # print("Loss shape: ", loss.shape)
                     #weighting by Q values and beta
                     # currently action prediction at self.state_length+k(self.state_length+self.action_length)
-                    act_pred_weights=-1*self.alpha*torch.exp(associated_emp_q_estimates)
-                    weight_mults = torch.cat((torch.ones(batch_size, j-i, self.state_length).to(device=self.device), associated_emp_q_estimates.reshape(batch_size, j-i, 1)), dim=2).reshape(batch_size, -1)[:, 1:]
+                    # breakpoint()
+                    act_pred_weights=1*self.alpha*torch.exp((associated_emp_q_estimates-baselineV.reshape((batch_size, 1)).repeat((1, j-i)))/self.temperature)
+                    # print()
+                    # breakpoint()
+                    weight_mults = torch.cat((torch.zeros(batch_size, j-i, self.state_length).to(device=self.device), act_pred_weights.reshape(batch_size, j-i, 1)), dim=2).reshape(batch_size, -1)[:, 1:]
                     # print(weight_mults)
                     loss = torch.sum(loss*weight_mults)/(batch_size*((j-i)*(self.state_length+self.action_length)-1))
                     # print(loss)
@@ -115,8 +132,8 @@ class Trainer:
 
                 # decay the learning rate based on our progress
                 if config.lr_decay:
-                    y = seq_to_be_autoregressed[-2]
-                    self.n_tokens += (y != self.vocab_size).sum() # number of tokens processed this step
+                    # y = seq_to_be_autoregressed[-2]
+                    self.n_tokens += num_tokens # number of tokens processed this step
                     if self.n_tokens < config.warmup_tokens:
                         # linear warmup
                         lr_mult = float(self.n_tokens) / float(max(1, config.warmup_tokens))

@@ -346,8 +346,8 @@ class PPOTrainer:
         if not os.path.exists("./models"):
             os.makedirs("./models")
         self.model.cpu()
-        pickle.dump((self.model.state_dict(), self.config), open("./models/" + self.run_id + ".nn", "wb"))
-        print("Model saved to " + "./models/" + self.run_id + ".nn")
+        pickle.dump((self.model.state_dict(), self.config), open("./models/RNN" + self.run_id + ".nn", "wb"))
+        print("Model saved to " + "./models/RNN" + self.run_id + ".nn")
 
     def close(self) -> None:
         """Terminates the trainer and all related processes."""

@@ -1,6 +1,134 @@
+# In-context Decision Making in Single-Episode POMDPs
+
+This repository is heavily based on code from https://github.com/MarcoMeter/recurrent-ppo-truncated-bptt. It additionally uses some code from https://github.com/JannerM/trajectory-transformer. 
+
+This repository contains
+
+1) Three novel environments, each a variation of minigrid intended on testing specific aspects of the general problem of understanding a single-episode POMDP.
+
+2) RNN training on single episode environments, both with simulated episodes (i.e. endpoints where hidden state resets) and no episodes. The RNN is from https://github.com/MarcoMeter/recurrent-ppo-truncated-bptt.
+
+3) An implementation for transformer-based in-context online decision-making that can be adapted for a variety of single-episode POMDP experiments.
+
+# "Single-Episode POMDPs"
+We formally define the problem of single-episode POMDP learning to be an interaction with an environment in a single-episode of $o_1, a_1, r_1, o_2, a_2, r_2, o_3, a_3, r_3 \cdots$, where an agent must input actions $a_t=f(\tau_{<t}, s_t)$ and get rewards $r_t=f(\tau_{<t}, s_t, a_t)$ (only formulated as rewards for analogy) and a new observation $o_{t+1}$ from the environment. 
+
+Single-Episode POMDPs, in their most general form, can adversarially lead to unbounded risk. So in practice when considering this setting, we assume the slightly stronger type of single-episode POMDP where there exists a function 
+
+Off-policy RL: Pretty similar in high-level ideas of optimizing with respect to a representation of past experience as a dataset, but traditional Off-policy RL algorithms are geared towards more MDP-like application environments.
+
+Single-life RL: Also single-episode, with a very similar idea of Q-weighting updates. Primary focus is on practical challenges of MDP settings.
+
+
+Some experiences we had in trying to train in-context:
+- Naive approach is pretty sensitive to hyperparameters. Making context length too high in our experiments led to lower performance.
+- Including/excluding an autoregression objective, up to initial sensitivity early into a context, isn't that important. 
+
+
+# ICDM Transformer training
+
+
+We also found some bugs where the algorithm was too sensitive to what proportion of samples in a context were being predicted. 
+
+To safeguard against poor exploration and transformer autoregression of state prediction we
+1) Tried adding an entropy term to the autoregression loss
+2) Played around on the spectrum between incorporating lots of past context into new decision generation vs. generating from fresh context
+
+# Environments
+
+We have three environments, each of which is implemented as a wrapper around forever_empty.py. forever_empty.py is a subclass of minigrid with the following properties
+
+- The agent only has three actions -- 0 turns right, 1 turns left, 2 moves forwards.
+- The only object present is a goal, or possibly no goal. The presence of a goal is controlled by the parameter has_goal.
+- If the agent steps forwards onto the goal, a reward of 1 is recieved, and the location of the goal is resampled uniformly at random from the interior of the grid.
+- Every max_steps timesteps, the environment sends a signal saying it has been truncated
+- The observations received by the agent are either a full RGB image of the grid, or the tuple (agent_x, agent_y, goal_x, goal_y, agent_direction), controlled by obs_img. In our case, the latter observations were used to train the transformer.
+
+Each of our three environments provides a variant on the initial transition and reward dynamics of forever_empty.py to exhibit particular types of ways a single-episode POMDP can depend on the environment's history.
+
+## Environment 1: Entropy
+
+Entropy is a variant of minigrid (implemented through the wrapper entropy_env.py of forever_empty.py) in which the reward function depends on our agent's past actions. More specifically, this is implemented as follows:
+
+- There is no goal (has_goal is set to False)
+- For some window w, the reward given at timestep t is given by the entropy of the distribution of our agents position over the last min(w,t) timesteps (for instance, the config file entropy.yaml takes w=25).
+
+As such, the optimal move at a timestep t depends on the previous w-1 positions.
+
+The render function of entropy is also augmented such that upon calling enjoy.py (from https://github.com/MarcoMeter/recurrent-ppo-truncated-bptt) to visualize the agent's motion in the environment, one additionally sees a heat map in yellow of the last w visited squares. One such render is displayed below.
+
+![Entropy Grid](animations/Entropygrid-0.gif)
+
+## Environment 2: Mountains
+
+Mountains is a variant of minigrid (similarly implemented through the wrapper mountain_env.py) in which the transition function depends on our agent's past actions. More specifically, this is implemented as follows:
+
+- There is a goal (has_goal is set to True)
+- At any given time, each grid cell has a height assigned to it. Taking a forwards step that increases height by x is successful with a probability of exp(-2.5*x). Taking a forwards step that decreases height is always successful.
+- Heights are initially all 0. When an agent (successfully) takes a step forwards, the current heights are all decayed by a factor of 0.7, and the height of the cell the agent stepped off of is increased by 1.
+
+As such, the transition probabilities of the actions at a timestep t depends on an exponentially decaying sum of the past positions of the agent.
+
+The render function of mountains is similarly augmented such that upon calling enjoy.py, one additionally sees a heat map in purple of the current heights of the grid cells. One such render is displayed below.
+
+![Mountain Grid](animations/Mountaingrid-0.gif)
+
+## Environment 3: Deviation
+
+Deviation is a variant of minigrid (similarly implemented through the wrapper deviation_env.py) in which the reward given depends on our agent's past actions, and crucially, the amount of history it depends on increases over time. Our specific implementation of this concept goes as follows:
+
+- There is a goal (has_goal is set to True)
+- At every even timestep 2n, a reward of -0.2 is incurred if the action taken is the same as the action that was taken at timestep n.
+
+Hence, at time t, theoretically optimal play requires memory of the last t/2 steps.
+
+![Deviation Grid](animations/Deviategrid-0.gif)
+
+# RNN
+
+We use an RNN with an LSTM trained on the loss function of PPO with GAE. We use the RNN architecture and training process from (https://github.com/MarcoMeter/recurrent-ppo-truncated-bptt) with alteration for our infinite length environment. We recreate the description of the RNN and its training from their readme and then discuss our changes.
+
+## Model Architecture
+
+![Model Architecture](images/model.svg)
+
+The figure above illustrates the model architecture in the case of training Minigrid. The visual observation is processed by 3 convolutional layers. The flattened result is then divided into sequences before feeding it to the recurrent layer. After passing the recurrent layer's result to one hidden layer, the network is split into two streams. One computes the value function and the other one the policy. All layers use the ReLU activation.
+
+In the case of training an environment that utilizes vector observations only, the visual encoder is omitted and the observation is fed directly to the recurrent layer.
+
+## Flow of processing the training data
+
+1. Training data
+   1. Training data is sampled from the current policy
+   2. Sampled data is split into episodes
+   3. Episodes are split into sequences (based on the `sequence_length` hyperparameter)
+   4. Zero padding is applied to retrieve sequences of fixed length
+   5. Recurrent cell states are collected from the beginning of the sequences (truncated bptt)
+2. Forward pass of the model
+   1. While feeding the model for optimization, the data is flattened to feed an entire batch (faster)
+   2. Before feeding it to the recurrent layer, the data is reshaped to `(num_sequences, sequence_length, data)`
+3. Loss computation
+   1. Zero padded values are masked during the computation of the losses
+
+## Infinite Length Episodes
+
+Each of our environments has a max_step parameter. When the total step count is a multiple of max_step, an artificial signal is sent out of the environment indicating that it has been truncated (creating an artificial delineation of episodes within our infinite environment). Upon receiving this signal, trainer.py does the following:
+
+- collects the reward average from within that ``episode" to help track statistics on how the rewards attained by the model have been changing over time.
+- resets the environment's total reward to 0 in line with the previous
+- depending on the reset_hidden_state parameter, either resets the hidden state from the LSTM (simulating episodic training) or doesn't
+
+
+# Transformer
+
+
 # Recurrent Proximal Policy Optimization using Truncated BPTT
 
-This repository features a PyTorch based implementation of PPO using a recurrent policy supporting truncated backpropagation through time. Its intention is to provide a clean baseline/reference implementation on how to successfully employ recurrent neural networks alongside PPO and similar policy gradient algorithms.
+
+
+
+
+Its intention is to provide a clean baseline/reference implementation on how to successfully employ recurrent neural networks alongside PPO and similar policy gradient algorithms.
 
 We also offer a clean [TransformerXL + PPO baseline repository](https://github.com/MarcoMeter/episodic-transformer-memory-ppo).
 
